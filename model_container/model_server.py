@@ -1,5 +1,8 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from main import predict
+import base64
+import tempfile
+import os
 
 
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -8,7 +11,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
         length = int(content_length_header or 0)
         raw_body = self.rfile.read(length) if length > 0 else b""
 
-        # Try to parse JSON if content-type indicates JSON; otherwise echo raw
+
         content_type = self.headers.get("Content-Type", "").lower()
         if "application/json" in content_type:
             try:
@@ -17,17 +20,37 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 payload = json.loads(raw_body.decode("utf-8") or "null")
                 response_bytes = json.dumps({"received": payload}).encode("utf-8")
 
-                print(f"Will create a container with stream: {payload['Stream']}")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
 
                 try:
-                    if payload["Stream"] == "abc":
-                        amt = predict("abc.jpg")
-                        response_bytes = json.dumps({"garbage_count": amt}).encode("utf-8")
+                    # Terry Davis would ask "Is this too much black magic?", and I would say "Yes".
+                    # Check if this is an image upload
+                    if "image_data" in payload:
+                        print(f"Received image: {payload.get('filename', 'unknown')}")
+                        
+                        # Decode base64 image data
+                        image_data = base64.b64decode(payload["image_data"])
+                        
+                        # Save to temporary file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+                            temp_file.write(image_data)
+                            temp_path = temp_file.name
+                        
+                        # Run prediction on the uploaded image
+                        amt = predict(temp_path)
+                        
+                        # Clean up temporary file
+                        os.unlink(temp_path)
+                        
+                        response_bytes = json.dumps({
+                            "garbage_count": amt,
+                            "filename": payload.get("filename", "unknown"),
+                            "message": "Image processed successfully"
+                        }).encode("utf-8")
                     else:
-                        amt = predict("ab.jpg")
-                        response_bytes = json.dumps({"garbage_count": amt}).encode("utf-8")
+                        response_bytes = json.dumps({"error": "No valid data found"}).encode("utf-8")
+                        
                 except Exception as e:
                     print(f"Prediction failed: {e}")
                     response_bytes = json.dumps({"error": str(e)}).encode("utf-8")
@@ -37,7 +60,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 self.wfile.write(response_bytes)
                 return
             except Exception:
-                # Malformed JSON
+                # Bad json
                 error_bytes = b'{"error":"invalid json"}'
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -54,10 +77,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.wfile.write(raw_body)
 
     def log_message(self, format, *args):
-        return  # Silence default logging for simplicity
+        return  
 
 
-def run(host: str = "127.0.0.1", port: int = 8001) -> None:
+def run(host: str = "0.0.0.0", port: int = 8001) -> None:
     server = ThreadingHTTPServer((host, port), SimpleHandler)
     print(f"Serving on http://{host}:{port}")
     try:

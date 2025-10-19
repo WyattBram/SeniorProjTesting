@@ -1,6 +1,7 @@
 from ultralytics import YOLO
 import cv2
 from pathlib import Path
+import time
  
 
 def predict(image_path: str = "ab.jpg"):
@@ -11,11 +12,10 @@ def predict(image_path: str = "ab.jpg"):
     out_dir = Path(results[0].save_dir)
     print(f"Results saved to: {out_dir}")
     
-    # Extract detection information
-    result = results[0]  # Get first (and only) result
+    result = results[0]  
     
-    # Get detection data
-    confidences = result.boxes.conf if result.boxes is not None else []  # Confidence scores
+    confidences = result.boxes.conf if result.boxes is not None else [] 
+    #Ignore lower confidence, can change later but works rn
     confidences = [x for x in confidences if x >.5]
     return len(confidences)
 
