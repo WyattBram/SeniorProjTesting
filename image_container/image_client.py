@@ -35,7 +35,7 @@ def send_image(url: str = "http://visionmodel:8001/", image_path: str = "") -> s
 
 if __name__ == "__main__":
     print("Sending image...")
-    result = send_image(image_path="ab.jpg")
+    result = send_image(image_path="abc.jpg")
     print("Result:", result)
 
 

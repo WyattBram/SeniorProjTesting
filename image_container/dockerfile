@@ -2,10 +2,10 @@ FROM python:3.13.2
 
 WORKDIR /app
 
-COPY client.py .
+COPY image_client.py .
 COPY ab.jpg .
 COPY abc.jpg .
 
 EXPOSE 8001
 
-CMD ["python", "client.py"]
+CMD ["python", "image_client.py"]

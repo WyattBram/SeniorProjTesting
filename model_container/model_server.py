@@ -80,7 +80,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
         return  
 
 
-def run(host: str = "0.0.0.0", port: int = 8001) -> None:
+def run(host: str = "127.0.0.1", port: int = 8001) -> None:
     server = ThreadingHTTPServer((host, port), SimpleHandler)
     print(f"Serving on http://{host}:{port}")
     try:

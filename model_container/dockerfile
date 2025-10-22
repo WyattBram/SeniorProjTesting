@@ -3,7 +3,7 @@ FROM python:3.13.2
 WORKDIR /app
 
 COPY main.py .
-COPY server.py .
+COPY model_server.py .
 COPY FinalModel.pt .
 
 RUN pip install ultralytics pathlib
@@ -12,4 +12,4 @@ RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 
 EXPOSE 8001
 
-CMD ["python", "server.py"]
+CMD ["python", "model_server.py"]
