@@ -1,11 +1,28 @@
-FROM python:3.13.2
+# Smaller base keeps the image lean
+FROM python:3.13.2-slim
+
+# Ensure Python prints straight to stdout/stderr and avoids .pyc files
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+# Install ffmpeg (and ca-certificates for HTTPS). Clean apt cache to keep size down.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# If you have deps, uncomment these two lines and add a requirements.txt
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
 
 COPY image_client.py .
 COPY ab.jpg .
 COPY abc.jpg .
 
+
 EXPOSE 8001
+
+# Healthcheck is optional but handy during dev
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ffmpeg -version >/dev/null 2>&1 || exit 1
 
 CMD ["python", "image_client.py"]
