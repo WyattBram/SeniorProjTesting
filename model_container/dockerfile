@@ -6,9 +6,9 @@ COPY main.py .
 COPY model_server.py .
 COPY FinalModel.pt .
 
-RUN pip install ultralytics pathlib
+RUN pip install ultralytics opencv-python torch torchvision
 
-RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+RUN apt-get update && apt-get install -y ffmpeg libsm6 libxext6 libgl1-mesa-glx libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 8001
 

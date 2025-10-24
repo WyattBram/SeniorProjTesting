@@ -7,34 +7,58 @@ import os
 import subprocess
 import tempfile
 import glob
+import logging
 from typing import List, Optional, Dict, Any
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Dracula: "I have more percs than there are stars in the leo cluster"
 
 def send_json(url: str = "http://visionmodel:8001/", data: dict | None = None) -> str:
-    body = json.dumps(data or {}).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req) as response:
-        return response.read().decode("utf-8")
+    try:
+        body = json.dumps(data or {}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        logger.info(f"Sending JSON request to {url}")
+        with urllib.request.urlopen(req) as response:
+            result = response.read().decode("utf-8")
+            logger.info(f"Received response from {url}")
+            return result
+    except urllib.error.URLError as e:
+        logger.error(f"Network error sending to {url}: {e}")
+        return json.dumps({"error": f"Network error: {str(e)}"})
+    except Exception as e:
+        logger.error(f"Unexpected error sending to {url}: {e}")
+        return json.dumps({"error": f"Unexpected error: {str(e)}"})
 
 
 def send_image(url: str = "http://visionmodel:8001/", image_path: str = "") -> str:
     """Send an image file to the model"""
     try:
+        if not os.path.exists(image_path):
+            logger.error(f"Image file not found: {image_path}")
+            return json.dumps({"error": f"Image file not found: {image_path}"})
+        
+        logger.info(f"Reading image file: {image_path}")
         with open(image_path, "rb") as f:
-            image_data = base64.b64encode(f.read()).decode('utf-8')
+            image_bytes = f.read()
+            image_data = base64.b64encode(image_bytes).decode('utf-8')
+            logger.info(f"Encoded image data ({len(image_bytes)} bytes -> {len(image_data)} chars)")
 
         data = {
             "image_data": image_data,
             "filename": os.path.basename(image_path)
         }
+        logger.info(f"Sending image {os.path.basename(image_path)} to {url}")
         return send_json(url, data)
     except Exception as e:
+        logger.error(f"Error sending image {image_path}: {e}")
         return json.dumps({"error": str(e)})
 
 
@@ -134,7 +158,7 @@ def splice_and_send_video(
 # Example entrypoint for Docker
 # ---------------------------------------------------
 if __name__ == "__main__":
-    VIDEO_PATH = os.getenv("INPUT_PATH", "../input/myvideo.mp4")
+    VIDEO_PATH = os.getenv("INPUT_PATH", "/app/input/myvideo.mp4")
     STEP = os.getenv("STEP", "1")  # ← this can be any float as a string
     TARGET = os.getenv("WORKER_URL", "http://visionmodel:8001/")
     MAX = os.getenv("MAX_FRAMES")
