@@ -1,22 +1,42 @@
-# Data Pipeline Setup
+# Video Analysis API
 
-This project implements a data pipeline that processes video frames through a YOLO model for garbage detection.
+This project implements a complete video analysis system with a REST API that processes video frames through a YOLO model for garbage detection.
 
 ## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐
-│  Image Container │    │  Model Container │
-│                 │    │                 │
-│ - Extracts      │───▶│ - Receives      │
-│   frames from    │    │   images        │
-│   video         │    │ - Runs YOLO     │
-│ - Sends to      │    │   prediction    │
-│   model         │    │ - Returns count │
-└─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │  Backend API    │    │  Model Server   │
+│                 │    │                 │    │                 │
+│ - Uploads video │───▶│ - Receives      │───▶│ - Receives      │
+│ - Sends userId  │    │   video + userId│    │   images        │
+│ - Gets results  │◀───│ - Processes     │◀───│ - Runs YOLO     │
+│                 │    │   via containers│    │   prediction    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                              │
+                              ▼
+                       ┌─────────────────┐
+                       │ Image Container │
+                       │                 │
+                       │ - Extracts      │
+                       │   frames        │
+                       │ - Sends to      │
+                       │   model         │
+                       └─────────────────┘
 ```
 
 ## Components
+
+### Backend API Server (`api_server.py`)
+- **Purpose**: REST API endpoint for video analysis
+- **Key Features**:
+  - FastAPI-based HTTP server
+  - Video upload handling (multipart/form-data)
+  - Docker container orchestration
+  - JSON response formatting
+- **Endpoints**:
+  - `POST /api/analyze-video`: Main video analysis endpoint
+  - `GET /health`: Health check endpoint
 
 ### Image Container (`image_container/`)
 - **Purpose**: Extracts frames from video files and sends them to the model
@@ -44,115 +64,196 @@ This project implements a data pipeline that processes video frames through a YO
 
 ## Quick Start
 
-### 1. Build and Run Containers
+### 1. Start All Services
 
 ```bash
-# Make the script executable
-chmod +x create_container.sh
-
-# Build and run both containers
-./create_container.sh
+# Start the complete system (API server + model server)
+docker-compose up -d
 ```
 
 This will:
-- Create a Docker network called `my-network`
-- Build and run the model container on port 8001
-- Build and run the image container with input volume mounted
+- Build and run the API server on port 8000
+- Build and run the model server on port 8001
+- Create a Docker network for inter-container communication
+- Set up health checks and auto-restart
 
-### 2. Test the Complete Pipeline
+### 2. Test the API
 
-The image container is designed as a one-time job that processes your video and exits. Here's how to test it:
-
-#### **Basic Video Processing Test**
+#### **Using curl (Command Line)**
 ```bash
-# Process the video in image_container/input/myvideo.mp4
-docker run --network my-network --name imageclient-test -v $(pwd)/image_container/input:/app/input imageclient
+# Test health endpoint
+curl -X GET http://localhost:8000/health
+
+# Analyze a video
+curl -X POST \
+  -F "video_file=@image_container/input/floating-trash-and-ball-drift-on-polluted-river-surface-SBV-352831077-preview.mp4" \
+  -F "userId=test_user_123" \
+  http://localhost:8000/api/analyze-video
 ```
 
-#### **Test with Different Parameters**
-```bash
-# Process video with 2-second intervals instead of 1-second
-docker run --network my-network -e STEP=2 -v $(pwd)/image_container/input:/app/input imageclient
+#### **Using JavaScript/Frontend**
+```javascript
+const formData = new FormData();
+formData.append('video_file', videoFile);
+formData.append('userId', 'user123');
 
-# Process only first 5 frames
-docker run --network my-network -e MAX_FRAMES=5 -v $(pwd)/image_container/input:/app/input imageclient
+const response = await fetch('http://localhost:8000/api/analyze-video', {
+  method: 'POST',
+  body: formData
+});
 
-# Process with custom video path
-docker run --network my-network -e INPUT_PATH=/app/input/myvideo.mp4 -v $(pwd)/image_container/input:/app/input imageclient
+const result = await response.json();
+console.log(result);
 ```
 
-#### **Test Model Server Directly**
-```bash
-# Check if model server is running
-docker ps | grep visionmodel
+### 3. Legacy Processing (Direct Container Usage)
 
-# Test with a single image using curl
-curl -X POST http://localhost:8001/ \
-  -H "Content-Type: application/json" \
-  -d '{"image_data":"'$(base64 -i image_container/ab.jpg)'", "filename":"test.jpg"}'
+For direct container usage without the API:
+
+```bash
+# Process video with default settings (1-second intervals)
+./process_video.sh
+
+# Process video with custom settings
+./process_video.sh 2 5  # 2-second intervals, max 5 frames
 ```
 
-### 3. Monitor and Debug
+### 4. Monitor and Debug
 
 #### **View Logs**
 ```bash
-# Check model server logs
-docker logs visionmodel
+# Check API server logs
+docker-compose logs api-server
 
-# Check image container logs (after running it)
-docker logs imageclient-test
+# Check model server logs
+docker-compose logs visionmodel
+
+# Follow logs in real-time
+docker-compose logs -f api-server
+docker-compose logs -f visionmodel
 ```
 
 #### **System Status**
 ```bash
 # See all running containers
-docker ps
+docker-compose ps
 
 # See all containers (including stopped ones)
 docker ps -a
 
 # Check Docker network
 docker network ls
-docker network inspect my-network
+docker network inspect seniorprojtesting_my-network
 ```
 
 #### **Clean Up**
 ```bash
-# Remove test containers
-docker rm imageclient-test
+# Stop all services
+docker-compose down
 
-# Stop and restart model server if needed
-docker restart visionmodel
+# Stop and restart specific services
+docker-compose restart api-server
+docker-compose restart visionmodel
 
-# Stop all containers
-docker stop $(docker ps -q)
+# Remove all containers and networks
+docker-compose down --volumes --remove-orphans
 ```
 
-### 4. Expected Output
+## API Documentation
 
-When you run the pipeline, you should see output like this:
+### Backend API Server (`http://localhost:8000`)
 
-```
-Extracting frames every 1s from '/app/input/myvideo.mp4' and sending to http://visionmodel:8001/
-Sending frame 1/10 -> frame_00001.jpg
-Sending frame 2/10 -> frame_00002.jpg
-...
+#### **POST /api/analyze-video**
+Analyzes a video for garbage detection.
+
+**Request:**
+- **Method**: POST
+- **Content-Type**: multipart/form-data
+- **Parameters**:
+  - `video_file`: Video file (required)
+  - `userId`: User identifier (required)
+
+**Response:**
+```json
 {
-  "ok": true,
-  "video": "myvideo.mp4",
-  "step_seconds": 1.0,
-  "frames_sent": 10,
-  "responses": [
-    {
-      "frame": "frame_00001.jpg",
-      "response": {
-        "garbage_count": 5,
-        "filename": "frame_00001.jpg",
-        "message": "Image processed successfully"
+  "success": true,
+  "userId": "test_user_123",
+  "results": {
+    "ok": true,
+    "video": "test_user_123_video.mp4",
+    "frames_sent": 16,
+    "responses": [
+      {
+        "frame": "frame_00001.jpg",
+        "response": {
+          "garbage_count": 0,
+          "filename": "frame_00001.jpg",
+          "message": "Image processed successfully"
+        }
+      },
+      {
+        "frame": "frame_00002.jpg",
+        "response": {
+          "garbage_count": 1,
+          "filename": "frame_00002.jpg",
+          "message": "Image processed successfully"
+        }
       }
-    },
-    ...
-  ]
+    ]
+  }
+}
+```
+
+#### **GET /health**
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "video-analysis-api"
+}
+```
+
+### Expected Output
+
+When you call the API, you should see output like this:
+
+```json
+{
+  "success": true,
+  "userId": "test_user_123",
+  "results": {
+    "ok": true,
+    "video": "test_user_123_floating-trash-video.mp4",
+    "frames_sent": 16,
+    "responses": [
+      {
+        "frame": "frame_00001.jpg",
+        "response": {
+          "garbage_count": 0,
+          "filename": "frame_00001.jpg",
+          "message": "Image processed successfully"
+        }
+      },
+      {
+        "frame": "frame_00005.jpg",
+        "response": {
+          "garbage_count": 1,
+          "filename": "frame_00005.jpg",
+          "message": "Image processed successfully"
+        }
+      },
+      {
+        "frame": "frame_00009.jpg",
+        "response": {
+          "garbage_count": 2,
+          "filename": "frame_00009.jpg",
+          "message": "Image processed successfully"
+        }
+      }
+    ]
+  }
 }
 ```
 
@@ -177,11 +278,11 @@ docker run --network my-network \
   imageclient
 ```
 
-## API Endpoints
+## Legacy API Endpoints
 
 ### Model Server (`http://localhost:8001/`)
 
-**POST /** - Process an image
+**POST /** - Process an image (used internally by the system)
 - **Request**: JSON with `image_data` (base64) and `filename`
 - **Response**: JSON with `garbage_count`, `filename`, and `message`
 
@@ -202,19 +303,25 @@ Example response:
 }
 ```
 
+**Note**: This endpoint is used internally by the image container. For external use, use the Backend API Server at `http://localhost:8000/api/analyze-video`.
+
 ## Logging
 
-Both containers include comprehensive logging:
+All services include comprehensive logging:
 
+- **API Server**: Logs video uploads, processing requests, and responses
 - **Image Container**: Logs frame extraction, encoding, and network communication
 - **Model Container**: Logs image reception, prediction results, and errors
 
 View logs:
 ```bash
+# View API server logs
+docker logs api-server
+
 # View model container logs
 docker logs visionmodel
 
-# View image container logs
+# View image container logs (when running)
 docker logs imageclient
 ```
 
@@ -222,26 +329,32 @@ docker logs imageclient
 
 ### Common Issues
 
-1. **Model server not accessible**
+1. **API server not accessible**
+   - Check if containers are running: `docker ps`
+   - Verify API server is running: `curl http://localhost:8000/health`
+   - Check logs: `docker logs api-server`
+   - Ensure port 8000 is exposed: `docker ps | grep 8000`
+
+2. **Model server not accessible**
    - Check if containers are running: `docker ps`
    - Verify network: `docker network ls`
    - Check logs: `docker logs visionmodel`
    - Ensure port 8001 is exposed: `docker ps | grep 8001`
 
-2. **Image processing fails**
-   - Ensure input video exists in `image_container/input/`
+3. **Video processing fails**
+   - Ensure input video exists and is accessible
    - Check file permissions
    - Verify FFmpeg is working: `docker exec imageclient ffmpeg -version`
    - Check video path in container: `docker run --rm -v $(pwd)/image_container/input:/app/input imageclient ls -la /app/input/`
 
-3. **Network connectivity issues**
-   - Ensure both containers are on the same network
+4. **Network connectivity issues**
+   - Ensure all containers are on the same network
    - Check container names match the URLs in the code
    - Test connectivity: `docker exec imageclient ping visionmodel`
 
-4. **Container name conflicts**
-   - Remove existing containers: `docker rm imageclient-test`
-   - Use different names: `docker run --name my-test-container ...`
+5. **Container name conflicts**
+   - Remove existing containers: `docker rm api-server visionmodel`
+   - Use different names or restart: `docker-compose down && docker-compose up -d`
 
 ### Debug Commands
 
@@ -250,35 +363,36 @@ docker logs imageclient
 docker ps -a
 
 # Check network
-docker network inspect my-network
+docker network inspect seniorprojtesting_my-network
 
 # View container logs
+docker logs api-server
 docker logs visionmodel
 docker logs imageclient
 
+# Test API endpoints
+curl -X GET http://localhost:8000/health
+curl -X POST -F "video_file=@test.mp4" -F "userId=test" http://localhost:8000/api/analyze-video
+
 # Test network connectivity
 docker exec imageclient ping visionmodel
-
-# Test model server directly
-curl -X GET http://localhost:8001/
 
 # Check if video file exists in container
 docker run --rm -v $(pwd)/image_container/input:/app/input imageclient ls -la /app/input/
 
 # Run container interactively for debugging
-docker run -it --network my-network -v $(pwd)/image_container/input:/app/input imageclient /bin/bash
+docker run -it --network seniorprojtesting_my-network -v $(pwd)/image_container/input:/app/input imageclient /bin/bash
 ```
 
 ### Quick Fixes
 
 ```bash
 # Restart everything
-docker stop $(docker ps -q) && docker rm $(docker ps -aq)
-./create_container.sh
+docker-compose down && docker-compose up -d
 
 # Rebuild containers
-docker build -t visionmodel model_container/
-docker build -t imageclient image_container/
+docker-compose build
+docker-compose up -d
 
 # Check system resources
 docker system df
@@ -289,34 +403,40 @@ docker system prune  # Clean up unused resources
 
 ### Adding New Features
 
-1. **Image Container**: Modify `image_client.py` for new processing logic
-2. **Model Container**: Update `model_server.py` for new API endpoints
-3. **Testing**: Use `test_pipeline.py` to verify changes
+1. **API Server**: Modify `api_server.py` for new endpoints or processing logic
+2. **Image Container**: Modify `image_client.py` for new processing logic
+3. **Model Container**: Update `model_server.py` for new API endpoints
+4. **Testing**: Use the API endpoints to verify changes
 
 ### Custom Model
 
 To use a different YOLO model:
 1. Replace `FinalModel.pt` with your model file
 2. Update the model loading code in `main.py` if needed
-3. Rebuild the model container
+3. Rebuild the model container: `docker-compose build visionmodel`
 
 ## File Structure
 
 ```
 SeniorProjTesting/
+├── api_server.py              # Backend API server
+├── requirements.txt           # Python dependencies for API server
+├── Dockerfile                 # API server container configuration
+├── docker-compose.yml         # Multi-container orchestration
+├── process_video.sh           # Legacy video processing script
+├── test_model_direct.py       # Direct model testing script
+├── test_pipeline.py           # Pipeline testing script
 ├── image_container/
 │   ├── dockerfile
 │   ├── image_client.py
 │   ├── input/
-│   │   └── myvideo.mp4
+│   │   ├── myvideo.mp4
+│   │   └── floating-trash-and-ball-drift-on-polluted-river-surface-SBV-352831077-preview.mp4
 │   └── *.jpg (test images)
 ├── model_container/
 │   ├── dockerfile
 │   ├── main.py
 │   ├── model_server.py
 │   └── FinalModel.pt
-├── create_container.sh
-├── setup-network.sh
-├── test_pipeline.py
 └── README.md
 ```

@@ -75,6 +75,7 @@ def extract_frames(video_path: str, step_seconds: float, out_dir: Optional[str] 
     if step_seconds <= 0:
         raise ValueError("Step must be greater than 0 seconds.")
 
+
     temp_dir = out_dir or tempfile.mkdtemp(prefix="frames_")
     os.makedirs(temp_dir, exist_ok=True)
     out_pattern = os.path.join(temp_dir, "frame_%05d.jpg")
@@ -149,7 +150,6 @@ def splice_and_send_video(
     return {
         "ok": True,
         "video": os.path.basename(video_path),
-        "step_seconds": step_seconds,
         "frames_sent": len(frames),
         "responses": responses
     }
@@ -158,7 +158,7 @@ def splice_and_send_video(
 # Example entrypoint for Docker
 # ---------------------------------------------------
 if __name__ == "__main__":
-    VIDEO_PATH = os.getenv("INPUT_PATH", "/app/input/myvideo.mp4")
+    VIDEO_PATH = os.getenv("INPUT_PATH", "/app/input/floating-trash-and-ball-drift-on-polluted-river-surface-SBV-352831077-preview.mp4")
     STEP = os.getenv("STEP", "1")  # ← this can be any float as a string
     TARGET = os.getenv("WORKER_URL", "http://visionmodel:8001/")
     MAX = os.getenv("MAX_FRAMES")
