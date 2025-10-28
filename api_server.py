@@ -69,37 +69,51 @@ async def analyze_video(
         
         logger.info(f"Processing video for userId: {userId}, size: {len(content)} bytes")
         
-        # Save video to temporary file
-        temp_video_path = TEMP_DIR / f"{userId}_{video_file.filename}"
+        # Save video to temporary file in a location accessible to Docker
+        temp_video_path = Path("/tmp") / f"{userId}_{video_file.filename}"
         with open(temp_video_path, "wb") as f:
             f.write(content)
         
         try:
-            # Copy video to input directory for container
-            # Both containers now use /app/input as the mount point
-            input_video_path = Path("/app/input") / f"{userId}_{video_file.filename}"
-            shutil.copy2(temp_video_path, input_video_path)
+            # Create a simple filename for the container mount
+            container_filename = f"{userId}_{video_file.filename}".replace("_", "-")
             
-            # Set the correct path for the container (relative to /app/input)
-            container_video_path = f"/app/input/{userId}_{video_file.filename}"
+            # Use docker cp to copy the file into the container instead of mounting
+            # This avoids Docker volume mount issues completely
+            container_name = f"temp_imageclient_{userId}"
             
-            # Set environment variables and run container
-            env = os.environ.copy()
-            env["INPUT_PATH"] = container_video_path
-            env["USER_ID"] = userId
-            
-            logger.info(f"Running Docker container for userId: {userId}")
-            
-            # Use docker-compose to run the image processing container
-            # This automatically handles networking and volume mounts
-            result = subprocess.run([
-                "docker-compose", "run", "--rm",
-                "-e", f"INPUT_PATH={container_video_path}",
+            # Start a temporary container
+            subprocess.run([
+                "docker", "run", "-d",
+                "--name", container_name,
+                "--network", "seniorprojtesting_my-network",
                 "-e", f"USER_ID={userId}",
-                "imageclient"
+                "-e", "WORKER_URL=http://visionmodel:8001/",
+                "seniorprojtesting-imageclient",
+                "sleep", "300"  # Keep container alive for 5 minutes
             ], capture_output=True, text=True, cwd=os.getcwd())
             
-            if result.returncode != 0:
+            # Copy the video file into the container
+            subprocess.run([
+                "docker", "cp", str(temp_video_path.absolute()), f"{container_name}:/tmp/video.mp4"
+            ], capture_output=True, text=True, cwd=os.getcwd())
+            
+            # Run the processing command
+            result = subprocess.run([
+                "docker", "exec", container_name,
+                "python", "-c", 
+                f"import os; os.environ['INPUT_PATH']='/tmp/video.mp4'; exec(open('/app/image_client.py').read())"
+            ], capture_output=True, text=True, cwd=os.getcwd())
+            
+            # Clean up the temporary container
+            subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, text=True)
+            
+            logger.info(f"Container return code: {result.returncode}")
+            logger.info(f"Container stdout: {result.stdout}")
+            logger.info(f"Container stderr: {result.stderr}")
+            
+            # Don't fail on non-zero return code - check if we got valid JSON output
+            if not result.stdout.strip():
                 logger.error(f"Docker container failed: {result.stderr}")
                 raise HTTPException(
                     status_code=500, 
@@ -143,8 +157,6 @@ async def analyze_video(
             # Cleanup temporary files
             if temp_video_path.exists():
                 temp_video_path.unlink()
-            if input_video_path.exists():
-                input_video_path.unlink()
             logger.info(f"Cleaned up temporary files for userId: {userId}")
     
     except HTTPException:
