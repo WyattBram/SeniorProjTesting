@@ -16,9 +16,6 @@ WORKDIR /app
 # RUN pip install --no-cache-dir -r requirements.txt
 
 COPY image_client.py .
-COPY ab.jpg .
-COPY abc.jpg .
-
 
 EXPOSE 8001
 
