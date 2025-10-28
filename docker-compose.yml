@@ -5,7 +5,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./image_container/input:/app/image_container/input
+      - ./image_container/input:/app/input
       - ./temp_uploads:/app/temp_uploads
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
