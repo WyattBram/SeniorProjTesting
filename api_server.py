@@ -76,7 +76,8 @@ async def analyze_video(
         
         try:
             # Copy video to input directory for container
-            input_video_path = Path("image_container/input") / f"{userId}_{video_file.filename}"
+            # The API server container has volume mount: ./image_container/input:/app/image_container/input
+            input_video_path = Path("/app/image_container/input") / f"{userId}_{video_file.filename}"
             shutil.copy2(temp_video_path, input_video_path)
             
             # Set the correct path for the container (relative to /app/input)
