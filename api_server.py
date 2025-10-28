@@ -89,14 +89,13 @@ async def analyze_video(
             
             logger.info(f"Running Docker container for userId: {userId}")
             
-            # Run the image processing container using docker directly
+            # Use docker-compose to run the image processing container
+            # This automatically handles networking and volume mounts
             result = subprocess.run([
-                "docker", "run", "--rm",
-                "--network", "seniorprojtesting_my-network",
-                "-v", "/Users/collintucker/Workspace/SeniorProject/SeniorProjTesting/image_container/input:/app/input",
+                "docker-compose", "run", "--rm",
                 "-e", f"INPUT_PATH={container_video_path}",
                 "-e", f"USER_ID={userId}",
-                "seniorprojtesting-imageclient"
+                "imageclient"
             ], capture_output=True, text=True, cwd=os.getcwd())
             
             if result.returncode != 0:

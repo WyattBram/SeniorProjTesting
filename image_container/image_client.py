@@ -158,7 +158,7 @@ def splice_and_send_video(
 # Example entrypoint for Docker
 # ---------------------------------------------------
 if __name__ == "__main__":
-    VIDEO_PATH = os.getenv("INPUT_PATH", "/app/input/floating-trash-and-ball-drift-on-polluted-river-surface-SBV-352831077-preview.mp4")
+    VIDEO_PATH = os.getenv("INPUT_PATH", "/app/input/myvideo.mp4")
     STEP = os.getenv("STEP", "1")  # ← this can be any float as a string
     TARGET = os.getenv("WORKER_URL", "http://visionmodel:8001/")
     MAX = os.getenv("MAX_FRAMES")
