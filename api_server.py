@@ -80,7 +80,7 @@ async def analyze_video(
             
             # Use docker cp to copy the file into the container instead of mounting
             # This avoids Docker volume mount issues completely
-            container_name = f"temp_imageclient_{userId}"
+            container_name = f"imageclient_{userId}"
             
             # Start a temporary container
             subprocess.run([

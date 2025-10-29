@@ -10,6 +10,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - visionmodel
+      - imageclient
     networks:
       - my-network
     restart: unless-stopped
@@ -38,8 +39,6 @@ services:
     depends_on:
       - visionmodel
     restart: "no"  # One-time job container
-    profiles:
-      - manual  # Only start when explicitly requested
 
 networks:
   my-network:
