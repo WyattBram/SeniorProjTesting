@@ -1,6 +1,6 @@
 # Video Analysis API
 
-This project implements a complete video analysis system with a REST API that processes video frames through a YOLO model for garbage detection.
+This project implements a complete video analysis system with a REST API that processes video frames through a YOLO model for garbage detection. Results are automatically saved to Firebase Firestore for persistent storage and retrieval.
 
 ## Architecture
 
@@ -13,26 +13,33 @@ This project implements a complete video analysis system with a REST API that pr
 │ - Gets results  │◀───│ - Processes     │◀───│ - Runs YOLO     │
 │                 │    │   via containers│    │   prediction    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │ Image Container │
-                       │                 │
-                       │ - Extracts      │
-                       │   frames        │
-                       │ - Sends to      │
-                       │   model         │
-                       └─────────────────┘
+                            │
+                            │        ┌─────────────────┐
+                            │        │   Firebase      │
+                            └───────▶│   Firestore     │
+                                     │                 │
+                                     │ - Stores results│
+                                     │ - Persists data │
+                                     └─────────────────┘
+                                     ┌─────────────────┐
+                                     │ Image Container │
+                                     │                 │
+                                     │ - Extracts      │
+                                     │   frames        │
+                                     │ - Sends to      │
+                                     │   model         │
+                                     └─────────────────┘
 ```
 
 ## Components
 
 ### Backend API Server (`api_server.py`)
-- **Purpose**: REST API endpoint for video analysis
+- **Purpose**: REST API endpoint for video analysis with Firebase integration
 - **Key Features**:
   - FastAPI-based HTTP server
   - Video upload handling (multipart/form-data)
   - Docker container orchestration using `docker cp` for file transfer
+  - Automatic Firebase Firestore integration for result persistence
   - JSON response formatting
 - **Endpoints**:
   - `POST /api/analyze-video`: Main video analysis endpoint
@@ -64,6 +71,12 @@ This project implements a complete video analysis system with a REST API that pr
 
 ## Quick Start
 
+### Prerequisites
+
+- Docker and Docker Compose installed
+- Firebase service account key (`RiverGuardAccountKey.json`) in the project root
+- Python 3.13+ (for local development)
+
 ### 1. Start All Services
 
 ```bash
@@ -75,10 +88,11 @@ docker-compose up -d
 ```
 
 This will:
-- Build and run the API server on port 8000
+- Build and run the API server on port 8000 with Firebase integration
 - Build and run the model server on port 8001
 - Create a Docker network for inter-container communication
 - Set up health checks and auto-restart
+- Initialize Firebase Admin SDK for database operations
 
 ### 2. Test the API
 
@@ -218,14 +232,15 @@ Health check endpoint.
 
 ### Video Processing Pipeline
 
-1. **Video Upload**: Client uploads video file via POST request
+1. **Video Upload**: Client uploads video file via POST request with userId
 2. **File Handling**: API server saves video to temporary location
 3. **Container Execution**: API server creates temporary imageclient container
 4. **File Transfer**: Video file is copied into container using `docker cp`
 5. **Frame Extraction**: FFmpeg extracts frames at 1-second intervals
 6. **ML Processing**: Each frame is sent to the model server for garbage detection
 7. **Results Aggregation**: All frame results are collected and returned
-8. **Cleanup**: Temporary containers and files are removed
+8. **Firebase Storage**: Results are automatically saved to Firestore database
+9. **Cleanup**: Temporary containers and files are removed
 
 ### Key Technical Details
 
@@ -233,6 +248,8 @@ Health check endpoint.
 - **Container Management**: Creates temporary containers for each video processing request
 - **Network Communication**: All containers communicate via Docker network `seniorprojtesting_my-network`
 - **Frame Extraction**: FFmpeg extracts frames at configurable intervals (default: 1 second)
+- **Firebase Integration**: Automatic result persistence to Firestore after successful analysis
+- **Document Structure**: Each video analysis creates a document with userId as the document ID
 - **Error Handling**: Comprehensive error handling and logging throughout the pipeline
 
 ## Configuration
@@ -245,9 +262,27 @@ The image container supports these environment variables:
 - `USER_ID`: User identifier (set by API server)
 - `WORKER_URL`: Model server URL (default: `http://visionmodel:8001/`)
 
+### Firebase Configuration
+
+Firebase integration requires:
+
+- `RiverGuardAccountKey.json`: Firebase service account key (must be in project root)
+- Firestore collection: `videos` (automatically created)
+- Document structure:
+  ```json
+  {
+    "userId": "user_id_string",
+    "videoFilename": "original_filename.mp4",
+    "uploadDate": "timestamp",
+    "totalGarbageCount": 19,
+    "framesProcessed": 16,
+    "garbageCountPerFrame": [0, 0, 0, 1, 2, ...]
+  }
+  ```
+
 ### Docker Compose Services
 
-- **api-server**: FastAPI server with Docker client capabilities
+- **api-server**: FastAPI server with Docker client capabilities and Firebase integration
 - **visionmodel**: YOLO model server for garbage detection
 
 ## Troubleshooting
@@ -281,6 +316,12 @@ The image container supports these environment variables:
    - Ensure all containers are on the same network
    - Check container names match the URLs in the code
    - Test connectivity: `docker exec imageclient ping visionmodel`
+
+6. **Firebase initialization errors**
+   - Verify `RiverGuardAccountKey.json` exists in project root
+   - Check Firebase credentials are valid
+   - Ensure Firebase Admin SDK is installed: `pip list | grep firebase`
+   - View logs: `docker-compose logs api-server | grep -i firebase`
 
 ### Debug Commands
 
@@ -341,10 +382,11 @@ To use a different YOLO model:
 
 ```
 SeniorProjTesting/
-├── api_server.py              # Backend API server
-├── requirements.txt           # Python dependencies for API server
+├── api_server.py              # Backend API server with Firebase integration
+├── requirements.txt           # Python dependencies for API server (includes firebase-admin)
 ├── Dockerfile                 # API server container configuration
 ├── docker-compose.yml         # Multi-container orchestration
+├── RiverGuardAccountKey.json  # Firebase service account key
 ├── image_container/
 │   ├── dockerfile
 │   ├── image_client.py
@@ -359,15 +401,24 @@ SeniorProjTesting/
 
 ## Recent Updates
 
+### Latest Features (Current Version)
+
+- **✅ Firebase Integration**: Automatic result persistence to Firestore after video analysis
+- **✅ Document-based Storage**: Results stored with userId as document ID for easy retrieval
+- **✅ Clean Data Structure**: Only essential fields stored (userId, videoFilename, uploadDate, totalGarbageCount, framesProcessed, garbageCountPerFrame)
+- **✅ Non-blocking Saves**: Firebase operations don't block API response to frontend
+
 ### Fixed Issues (Latest Version)
 
 - **✅ Resolved "Video file not found" error**: Switched from Docker volume mounts to `docker cp` file transfer
 - **✅ Fixed container orchestration**: API server now properly manages temporary containers
 - **✅ Improved error handling**: Better logging and error reporting throughout the pipeline
 - **✅ Streamlined architecture**: Simplified container management and file handling
+- **✅ Added docker-compose support**: Proper Docker Compose integration for easy deployment
 
 ### Technical Improvements
 
+- **Firebase Integration**: Seamless result persistence with comprehensive error handling
 - **File Transfer**: Uses `docker cp` to copy video files into containers, avoiding volume mount issues
 - **Container Management**: Creates temporary containers for each request and cleans them up automatically
 - **Network Communication**: All containers communicate via Docker network for reliable connectivity
