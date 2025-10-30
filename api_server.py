@@ -13,10 +13,31 @@ import json
 import shutil
 from pathlib import Path
 import logging
+import firebase_admin
+from firebase_admin import credentials, firestore
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize Firebase
+try:
+    cred_path = Path("/app/RiverGuardAccountKey.json")
+    if cred_path.exists():
+        cred = credentials.Certificate(str(cred_path))
+        firebase_admin.initialize_app(cred, {
+            "projectId": "trashapi-6eced",
+            "storageBucket": "trashapi-6eced.appspot.com"
+        })
+        db = firestore.client()
+        logger.info("Firebase initialized successfully")
+    else:
+        logger.warning(f"Firebase credentials not found at {cred_path}. Firebase features disabled.")
+        db = None
+except Exception as e:
+    logger.error(f"Failed to initialize Firebase: {e}")
+    db = None
 
 app = FastAPI(title="Video Analysis API", version="1.0.0")
 
@@ -34,6 +55,48 @@ MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 TEMP_DIR = Path("temp_uploads")
 TEMP_DIR.mkdir(exist_ok=True)
+
+def save_results_to_firestore(user_id: str, video_filename: str, results: dict):
+    """
+    Save analysis results to Firestore database.
+    Returns True if successful, False otherwise.
+    """
+    if db is None:
+        logger.warning("Firebase not available, skipping database save")
+        return False
+    
+    try:
+        # Calculate summary statistics
+        total_garbage = 0
+        frames_processed = 0
+        garbage_count_per_frame = []
+        
+        if results.get("ok") and "responses" in results:
+            for frame_response in results["responses"]:
+                frame_data = frame_response.get("response", {})
+                garbage_count = frame_data.get("garbage_count", 0)
+                total_garbage += garbage_count
+                frames_processed += 1
+                garbage_count_per_frame.append(garbage_count)
+        
+        # Create document data with only required fields
+        doc_data = {
+            "userId": user_id,
+            "videoFilename": video_filename,
+            "uploadDate": datetime.now(),
+            "totalGarbageCount": total_garbage,
+            "framesProcessed": frames_processed,
+            "garbageCountPerFrame": garbage_count_per_frame
+        }
+        
+        # Save to Firestore using userId as document ID
+        doc_ref = db.collection("videos").document(user_id).set(doc_data)
+        logger.info(f"Saved analysis results to Firestore for userId: {user_id} (used as doc ID)")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to save to Firestore: {e}")
+        return False
 
 @app.post("/api/analyze-video")
 async def analyze_video(
@@ -138,6 +201,13 @@ async def analyze_video(
                 json_output = json.loads(json_str)
                 
                 logger.info(f"Successfully processed video for userId: {userId}")
+                
+                # Save results to Firestore (non-blocking)
+                try:
+                    save_results_to_firestore(userId, video_file.filename, json_output)
+                except Exception as e:
+                    logger.error(f"Failed to save results to Firestore: {e}")
+                    # Don't fail the request if Firestore save fails
                 
                 return {
                     "success": True,

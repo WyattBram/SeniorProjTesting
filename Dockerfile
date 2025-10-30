@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy API server code
 COPY api_server.py .
 
+# Copy Firebase credentials
+COPY RiverGuardAccountKey.json .
+
 # Create temp directories
 RUN mkdir -p temp_uploads
 
